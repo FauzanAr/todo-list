@@ -3,6 +3,7 @@ const { db } = require('../util/admin');
 exports.getAllTodos = (request, response) => {
     db
         .collection('todos')
+        .where('username', '==', request.user.username)
         .orderBy('createdAt', 'desc')
         .get()
         .then((data) => {
@@ -12,6 +13,7 @@ exports.getAllTodos = (request, response) => {
                     todoId: doc.id,
                     title: doc.data().title,
                     body: doc.data().body,
+                    username: doc.data().username,
                     createdAt: doc.data().createdAt
                 });
             });
@@ -21,7 +23,28 @@ exports.getAllTodos = (request, response) => {
         .catch((err) => {
             console.error(err);
             return response.status(500).json({ error: err.code});
+        });
+};
+
+exports.getOneTodo = (request, response) => {
+    db
+        .doc(`/todos/${request.params.todoId}`)
+        .get()
+        .then((doc) => {
+            if(!doc.exists){
+                return response.status(404).json({ error: 'Todo not found' });
+            }
+            if(doc.data().username !== request.user.username){
+                return response.status(403).json({ error: 'Unauthorized' });
+            }
+            TodoData = doc.data();
+            TodoData.todoId = doc.id;
+            return response.json(TodoData);
         })
+        .catch((err) => {
+            console.error(err);
+            return response.status(500).json({ error: error.code });
+        });
 }
 
 exports.postOneTodo = (request, response) => {
@@ -35,6 +58,7 @@ exports.postOneTodo = (request, response) => {
 
     const newTodoItem = {
         title: request.body.title,
+        username: request.user.username,
         body: request.body.body,
         createdAt: new Date().toISOString()
     }
@@ -60,6 +84,9 @@ exports.deleteTodo = (request, response) => {
             if(!doc.exists){
                 return response.status(404).json({ error: "Todo not found" });
             }
+            if(doc.data().username !== request.user.username){
+                return response.status(403).json({ error: 'Unauthorized' });
+            }
             return document.delete();
         })
         .then(() => {
@@ -77,10 +104,13 @@ exports.editTodo = ( request, response ) => {
     }
     let document = db.collection('todos').doc(`${request.params.todoId}`);
     document.update(request.body)
-    .then(() => {
+    .then((doc) => {
         response.json({ message: 'Updated successfully' });
     })
     .catch((err) => {
+        if(err.code === 5){
+            response.status(404).json({ message: 'Not Found' });
+        }
         console.error(err);
         return response.status(500).json({ error: err.message });
     });
